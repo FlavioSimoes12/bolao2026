@@ -318,23 +318,39 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:16px 0}
 
 <div class="toast" id="toast"></div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, onValue, set, get, update }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyC2Ul-03xxoDyRjmHoIC9XMA4XeN6Rz8ec",
-  authDomain: "bolao-copa-2026-ffda8.firebaseapp.com",
-  databaseURL: "https://bolao-copa-2026-ffda8-default-rtdb.firebaseio.com",
-  projectId: "bolao-copa-2026-ffda8",
-  storageBucket: "bolao-copa-2026-ffda8.firebasestorage.app",
-  messagingSenderId: "649451200096",
-  appId: "1:649451200096:web:d4e416aacd7be980856d05"
-};
+  <!-- Firebase CDN (compat - funciona com onclick e escopo global) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script>
+    firebase.initializeApp({
+      apiKey: "AIzaSyC2Ul-03xxoDyRjmHoIC9XMA4XeN6Rz8ec",
+      authDomain: "bolao-copa-2026-ffda8.firebaseapp.com",
+      databaseURL: "https://bolao-copa-2026-ffda8-default-rtdb.firebaseio.com",
+      projectId: "bolao-copa-2026-ffda8",
+      storageBucket: "bolao-copa-2026-ffda8.firebasestorage.app",
+      messagingSenderId: "649451200096",
+      appId: "1:649451200096:web:d4e416aacd7be980856d05"
+    });
+  </script>
 
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+<script>
+
+/* ── Firebase CDN (compat mode — sem type=module, sem problema de escopo) ── */
+
+/* ── Cache local ── */
+var _cache = null;
+
+function gd(){ return _cache || {}; }
+
+function sd(d){
+  _cache = JSON.parse(JSON.stringify(d));
+  firebase.database().ref('bolao').set(_cache)
+    .catch(function(e){ console.error('Firebase write error:', e); });
+}
+
+/* ── Sessão ── */
+var CU = null, IA = false;
 
 /* ═══════════════════════════════════════════════════════
    DADOS DA COPA 2026
@@ -418,118 +434,80 @@ let _cache = null;
 let _cache = null;
 
 // Lê do cache local (sempre disponível após init)
-function gd(){ return _cache || {}; }
-
-// Salva no Firebase e atualiza cache local
-function sd(d){
-  _cache = d;
-  set(ref(db,'bolao'), JSON.parse(JSON.stringify(d)))
-    .catch(e => console.error('Firebase write error:', e));
-}
 
 /* ═══════════════════════════════════════════════════════
-   SESSÃO
+   INIT — Firebase Realtime Database
 ═══════════════════════════════════════════════════════ */
-let CU = null, IA = false;
+function init(){
+  var loginEl = document.getElementById('login-screen');
 
-/* ═══════════════════════════════════════════════════════
-   INIT — carrega dados do Firebase e configura listener
-═══════════════════════════════════════════════════════ */
-async function init(){
-  // Tela de loading
-  const loginEl = document.getElementById('login-screen');
-  const origLoginHTML = loginEl.innerHTML;
-  loginEl.innerHTML = `
-    <div style="text-align:center;color:#8b949e;padding:40px">
-      <div style="font-size:56px;margin-bottom:16px">⚽</div>
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:3px;color:#f0c84a">Conectando...</div>
-      <div style="font-size:13px;margin-top:8px">Carregando dados do bolão</div>
-    </div>`;
+  loginEl.innerHTML = '<div style="text-align:center;color:#8b949e;padding:60px 20px">' +
+    '<div style="font-size:56px;margin-bottom:16px">⚽</div>' +
+    '<div style="font-family:Bebas Neue,sans-serif;font-size:28px;letter-spacing:3px;color:#f0c84a">Conectando...</div>' +
+    '<div style="font-size:13px;margin-top:8px">Carregando dados do bolão</div>' +
+    '</div>';
 
-  try {
-    // Busca dados iniciais
-    const snap = await get(ref(db, 'bolao'));
-    let d = snap.val() || {};
+  var db = firebase.database();
 
-    // Inicializa estrutura se primeira vez
-    let changed = false;
-    if(!d.users)      { d.users = {'flabolao%':{pwd:'335289',isAdmin:true}}; changed=true; }
-    if(!d.resultados) { d.resultados = {}; changed=true; }
-    if(!d.palpites)   { d.palpites = {}; changed=true; }
-    if(!d.mmPal)      { d.mmPal = {}; changed=true; }
-    if(!d.mm)         { d.mm = {}; changed=true; }
-    if(!d.fase)       { d.fase = 'grupos_aberto'; changed=true; }
-    if(!d.desempates) { d.desempates = {}; changed=true; }
-    if(changed) await set(ref(db,'bolao'), d);
+  db.ref('bolao').once('value').then(function(snap){
+    var d = snap.val() || {};
+    var changed = false;
+    if(!d.users)      { d.users={'flabolao%':{pwd:'335289',isAdmin:true}}; changed=true; }
+    if(!d.resultados) { d.resultados={}; changed=true; }
+    if(!d.palpites)   { d.palpites={}; changed=true; }
+    if(!d.mmPal)      { d.mmPal={}; changed=true; }
+    if(!d.mm)         { d.mm={}; changed=true; }
+    if(!d.fase)       { d.fase='grupos_aberto'; changed=true; }
+    if(!d.desempates) { d.desempates={}; changed=true; }
     _cache = d;
+    if(changed) db.ref('bolao').set(_cache);
 
-  } catch(e) {
+    // Restaura tela de login
+    loginEl.innerHTML =
+      '<div class="lbox">' +
+        '<div class="llogo">⚽</div>' +
+        '<div class="lsub">Bolão Copa do Mundo 2026</div>' +
+        '<div class="fg"><label>Usuário</label><input id="lu" type="text" autocomplete="username" placeholder="Seu nome"></div>' +
+        '<div class="fg"><label>Senha</label><input id="lp" type="password" autocomplete="current-password" placeholder="••••••"></div>' +
+        '<button class="btn-login" onclick="doLogin()">ENTRAR</button>' +
+        '<div class="lerr" id="lerr">Usuário ou senha incorretos.</div>' +
+        '<div style="margin-top:14px;font-size:11px;color:var(--t2);border-top:1px solid var(--border);padding-top:12px">Use o usuário e senha que o administrador enviou para você</div>' +
+      '</div>';
+
+    // Listener tempo real — todos os usuários veem mudanças instantaneamente
+    db.ref('bolao').on('value', function(snap){
+      var val = snap.val();
+      if(!val) return;
+      _cache = val;
+      if(CU){
+        var activeTab = document.querySelector('.ntab.active');
+        if(activeTab) renderTab(activeTab.dataset.tab);
+      }
+    });
+
+  }).catch(function(e){
     console.error('Firebase init error:', e);
-    // Se falhar (offline/CORS), usa cache vazio para não travar
+    // Fallback: mostra login mesmo sem Firebase
     _cache = {
-      users: {'flabolao%':{pwd:'335289',isAdmin:true}},
-      resultados: {}, palpites: {}, mmPal: {}, mm: {},
-      fase: 'grupos_aberto', desempates: {}
+      users:{'flabolao%':{pwd:'335289',isAdmin:true}},
+      resultados:{}, palpites:{}, mmPal:{}, mm:{},
+      fase:'grupos_aberto', desempates:{}
     };
-  }
-
-  // Restaura tela de login
-  loginEl.innerHTML = `
-    <div class="lbox">
-      <div class="llogo">⚽</div>
-      <div class="lsub">Bolão Copa do Mundo 2026</div>
-      <div class="fg"><label>Usuário</label><input id="lu" type="text" autocomplete="username" placeholder="Seu nome"></div>
-      <div class="fg"><label>Senha</label><input id="lp" type="password" autocomplete="current-password" placeholder="••••••"></div>
-      <button class="btn-login" onclick="doLogin()">ENTRAR</button>
-      <div class="lerr" id="lerr">Usuário ou senha incorretos.</div>
-      <div style="margin-top:14px;font-size:11px;color:var(--t2);border-top:1px solid var(--border);padding-top:12px">
-        Use o usuário e senha que o administrador enviou para você
-      </div>
-    </div>`;
-
-  // Re-bind enter key (DOM foi recriado)
-  document.getElementById('lp').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
-  document.getElementById('lu').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
-
-  // Listener em tempo real — atualiza todos os usuários quando dados mudam
-  onValue(ref(db,'bolao'), snap => {
-    const val = snap.val();
-    if(!val) return;
-    _cache = val;
-    // Re-renderiza aba ativa se já logado
-    if(CU){
-      const activeTab = document.querySelector('.ntab.active');
-      if(activeTab) renderTab(activeTab.dataset.tab);
-    }
-  }, err => console.error('Firebase listener error:', err));
+    loginEl.innerHTML =
+      '<div class="lbox">' +
+        '<div class="llogo">⚽</div>' +
+        '<div class="lsub">Bolão Copa do Mundo 2026</div>' +
+        '<div class="fg"><label>Usuário</label><input id="lu" type="text" autocomplete="username" placeholder="Seu nome"></div>' +
+        '<div class="fg"><label>Senha</label><input id="lp" type="password" autocomplete="current-password" placeholder="••••••"></div>' +
+        '<button class="btn-login" onclick="doLogin()">ENTRAR</button>' +
+        '<div class="lerr" id="lerr">Usuário ou senha incorretos.</div>' +
+        '<div style="margin-top:14px;font-size:11px;color:var(--t2);border-top:1px solid var(--border);padding-top:12px">⚠️ Modo offline — dados não sincronizados</div>' +
+      '</div>';
+  });
 }
-
-
-/* ── Expor funções ao escopo global (necessário para ES modules) ── */
-window.doLogin = doLogin;
-window.doLogout = doLogout;
-window.showTab = showTab;
-window.rPalpites = rPalpites;
-window.savePal = savePal;
-window.saveMMScore = saveMMScore;
-window.votarMM = votarMM;
-window.toggleTransp = toggleTransp;
-window.openDetalhe = openDetalhe;
-window.closeModal = closeModal;
-window.addUser = addUser;
-window.delUser = delUser;
-window.saveRes = saveRes;
-window.saveMMRes = saveMMRes;
-window.setMMVenc = setMMVenc;
-window.setFase = setFase;
-window.exportar = exportar;
-window.importar = importar;
-window.abrirDesempate = abrirDesempate;
-window.salvarDesempate = salvarDesempate;
-window.closeTieModal = closeTieModal;
 
 /* ── Boot ── */
-init().catch(e => console.error('Boot error:', e));
+window.onload = function(){ init(); };
 
 function doLogin(){
   const u=document.getElementById('lu').value.trim();
@@ -1674,7 +1652,7 @@ function showToast(msg,type=''){
   t.textContent=msg; t.className='toast show'+(type?' '+type:'');
   clearTimeout(_tt); _tt=setTimeout(()=>t.classList.remove('show'),2500);
 }
-
 </script>
+
 </body>
 </html>
