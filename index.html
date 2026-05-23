@@ -319,6 +319,23 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:16px 0}
 <div class="toast" id="toast"></div>
 
 <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, set, get, update }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC2Ul-03xxoDyRjmHoIC9XMA4XeN6Rz8ec",
+  authDomain: "bolao-copa-2026-ffda8.firebaseapp.com",
+  databaseURL: "https://bolao-copa-2026-ffda8-default-rtdb.firebaseio.com",
+  projectId: "bolao-copa-2026-ffda8",
+  storageBucket: "bolao-copa-2026-ffda8.firebasestorage.app",
+  messagingSenderId: "649451200096",
+  appId: "1:649451200096:web:d4e416aacd7be980856d05"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
 /* ═══════════════════════════════════════════════════════
    DADOS DA COPA 2026
 ═══════════════════════════════════════════════════════ */
@@ -394,54 +411,70 @@ const db    = getDatabase(fbApp);
 let _cache = null;
 
 // Lê do cache (síncrono — sempre atualizado pelo listener)
+
+/* ═══════════════════════════════════════════════════════
+   STORAGE — Firebase Realtime Database
+═══════════════════════════════════════════════════════ */
+let _cache = null;
+
+// Lê do cache local (sempre disponível após init)
 function gd(){ return _cache || {}; }
 
-// Salva no Firebase (assíncrono) e atualiza cache local imediatamente
+// Salva no Firebase e atualiza cache local
 function sd(d){
   _cache = d;
-  set(ref(db,'bolao'), JSON.parse(JSON.stringify(d))).catch(e=>console.error('Firebase write error:',e));
+  set(ref(db,'bolao'), JSON.parse(JSON.stringify(d)))
+    .catch(e => console.error('Firebase write error:', e));
 }
 
-// Listener em tempo real — atualiza todos os browsers quando qualquer dado muda
-function startRealtimeSync(){
-  onValue(ref(db,'bolao'), snap=>{
-    const val = snap.val();
-    if(!val) return;
-    _cache = val;
-    // Re-render a aba ativa se o usuário já estiver logado
-    if(CU){
-      const activeTab = document.querySelector('.ntab.active');
-      if(activeTab) renderTab(activeTab.dataset.tab);
-    }
-  }, err=>console.error('Firebase read error:',err));
-}
+/* ═══════════════════════════════════════════════════════
+   SESSÃO
+═══════════════════════════════════════════════════════ */
+let CU = null, IA = false;
 
+/* ═══════════════════════════════════════════════════════
+   INIT — carrega dados do Firebase e configura listener
+═══════════════════════════════════════════════════════ */
 async function init(){
-  // Mostra loading enquanto carrega do Firebase
-  document.getElementById('login-screen').innerHTML = `
-    <div style="text-align:center;color:var(--t2)">
-      <div style="font-size:48px;margin-bottom:16px">⚽</div>
-      <div style="font-family:'Bebas Neue';font-size:24px;letter-spacing:3px;color:var(--goldl)">Conectando...</div>
+  // Tela de loading
+  const loginEl = document.getElementById('login-screen');
+  const origLoginHTML = loginEl.innerHTML;
+  loginEl.innerHTML = `
+    <div style="text-align:center;color:#8b949e;padding:40px">
+      <div style="font-size:56px;margin-bottom:16px">⚽</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:3px;color:#f0c84a">Conectando...</div>
       <div style="font-size:13px;margin-top:8px">Carregando dados do bolão</div>
     </div>`;
 
-  // Busca dados iniciais do Firebase
-  const snap = await get(ref(db,'bolao'));
-  let d = snap.val() || {};
+  try {
+    // Busca dados iniciais
+    const snap = await get(ref(db, 'bolao'));
+    let d = snap.val() || {};
 
-  // Inicializa estrutura se for a primeira vez
-  let changed = false;
-  if(!d.users)      { d.users={'flabolao%':{pwd:'335289',isAdmin:true}}; changed=true; }
-  if(!d.resultados) { d.resultados={}; changed=true; }
-  if(!d.palpites)   { d.palpites={}; changed=true; }
-  if(!d.mmPal)      { d.mmPal={}; changed=true; }
-  if(!d.mm)         { d.mm={}; changed=true; }
-  if(!d.fase)       { d.fase='grupos_aberto'; changed=true; }
-  if(changed) await set(ref(db,'bolao'), d);
-  _cache = d;
+    // Inicializa estrutura se primeira vez
+    let changed = false;
+    if(!d.users)      { d.users = {'flabolao%':{pwd:'335289',isAdmin:true}}; changed=true; }
+    if(!d.resultados) { d.resultados = {}; changed=true; }
+    if(!d.palpites)   { d.palpites = {}; changed=true; }
+    if(!d.mmPal)      { d.mmPal = {}; changed=true; }
+    if(!d.mm)         { d.mm = {}; changed=true; }
+    if(!d.fase)       { d.fase = 'grupos_aberto'; changed=true; }
+    if(!d.desempates) { d.desempates = {}; changed=true; }
+    if(changed) await set(ref(db,'bolao'), d);
+    _cache = d;
 
-  // Restaura a tela de login original
-  document.getElementById('login-screen').innerHTML = `
+  } catch(e) {
+    console.error('Firebase init error:', e);
+    // Se falhar (offline/CORS), usa cache vazio para não travar
+    _cache = {
+      users: {'flabolao%':{pwd:'335289',isAdmin:true}},
+      resultados: {}, palpites: {}, mmPal: {}, mm: {},
+      fase: 'grupos_aberto', desempates: {}
+    };
+  }
+
+  // Restaura tela de login
+  loginEl.innerHTML = `
     <div class="lbox">
       <div class="llogo">⚽</div>
       <div class="lsub">Bolão Copa do Mundo 2026</div>
@@ -453,17 +486,26 @@ async function init(){
         Use o usuário e senha que o administrador enviou para você
       </div>
     </div>`;
-  document.getElementById('lp').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
-  document.getElementById('lu').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
 
-  // Inicia sincronização em tempo real
-  startRealtimeSync();
+  // Re-bind enter key (DOM foi recriado)
+  document.getElementById('lp').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  document.getElementById('lu').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+  // Listener em tempo real — atualiza todos os usuários quando dados mudam
+  onValue(ref(db,'bolao'), snap => {
+    const val = snap.val();
+    if(!val) return;
+    _cache = val;
+    // Re-renderiza aba ativa se já logado
+    if(CU){
+      const activeTab = document.querySelector('.ntab.active');
+      if(activeTab) renderTab(activeTab.dataset.tab);
+    }
+  }, err => console.error('Firebase listener error:', err));
 }
 
-/* ═══════════════════════════════════════════════════════
-   SESSÃO
-═══════════════════════════════════════════════════════ */
-let CU=null, IA=false;
+/* ── Boot ── */
+init().catch(e => console.error('Boot error:', e));
 
 function doLogin(){
   const u=document.getElementById('lu').value.trim();
@@ -1609,8 +1651,6 @@ function showToast(msg,type=''){
   clearTimeout(_tt); _tt=setTimeout(()=>t.classList.remove('show'),2500);
 }
 
-/* ── Boot ── */
-init().catch(e=>{ console.error('Init error:',e); alert('Erro ao conectar com o Firebase. Verifique sua conexão.'); });
 </script>
 </body>
 </html>
