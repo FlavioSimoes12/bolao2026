@@ -318,7 +318,7 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:16px 0}
 
 <div class="toast" id="toast"></div>
 
-<script>
+<script type="module">
 /* ═══════════════════════════════════════════════════════
    DADOS DA COPA 2026
 ═══════════════════════════════════════════════════════ */
@@ -371,21 +371,93 @@ const TODOS_JOGOS = [];
 for(const g in GRUPOS) TODOS_JOGOS.push(...gerarJogos(g));
 
 /* ═══════════════════════════════════════════════════════
-   STORAGE
+   FIREBASE — STORAGE COMPARTILHADO EM TEMPO REAL
 ═══════════════════════════════════════════════════════ */
-function gd(){try{return JSON.parse(localStorage.getItem('bolao2026')||'{}')}catch{return{}}}
-function sd(d){localStorage.setItem('bolao2026',JSON.stringify(d))}
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, set, get }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-function init(){
-  let d=gd();
-  if(!d.users)      d.users={'flabolao%':{pwd:'335289',isAdmin:true}};
-  if(!d.resultados) d.resultados={};
-  if(!d.palpites)   d.palpites={};
-  if(!d.mmPal)      d.mmPal={};
-  if(!d.mm)         d.mm={};          // resultados reais do MM (admin)
-  // fases do bolão: 'grupos_aberto' | 'grupos_fechado_mm_aberto' | 'mm_fechado'
-  if(!d.fase)       d.fase='grupos_aberto';
-  sd(d); return d;
+const firebaseConfig = {
+  apiKey: "AIzaSyC2Ul-03xxoDyRjmHoIC9XMA4XeN6Rz8ec",
+  authDomain: "bolao-copa-2026-ffda8.firebaseapp.com",
+  databaseURL: "https://bolao-copa-2026-ffda8-default-rtdb.firebaseio.com",
+  projectId: "bolao-copa-2026-ffda8",
+  storageBucket: "bolao-copa-2026-ffda8.firebasestorage.app",
+  messagingSenderId: "649451200096",
+  appId: "1:649451200096:web:d4e416aacd7be980856d05"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db    = getDatabase(fbApp);
+
+// Cache local — evita re-renders desnecessários e permite uso síncrono
+let _cache = null;
+
+// Lê do cache (síncrono — sempre atualizado pelo listener)
+function gd(){ return _cache || {}; }
+
+// Salva no Firebase (assíncrono) e atualiza cache local imediatamente
+function sd(d){
+  _cache = d;
+  set(ref(db,'bolao'), JSON.parse(JSON.stringify(d))).catch(e=>console.error('Firebase write error:',e));
+}
+
+// Listener em tempo real — atualiza todos os browsers quando qualquer dado muda
+function startRealtimeSync(){
+  onValue(ref(db,'bolao'), snap=>{
+    const val = snap.val();
+    if(!val) return;
+    _cache = val;
+    // Re-render a aba ativa se o usuário já estiver logado
+    if(CU){
+      const activeTab = document.querySelector('.ntab.active');
+      if(activeTab) renderTab(activeTab.dataset.tab);
+    }
+  }, err=>console.error('Firebase read error:',err));
+}
+
+async function init(){
+  // Mostra loading enquanto carrega do Firebase
+  document.getElementById('login-screen').innerHTML = `
+    <div style="text-align:center;color:var(--t2)">
+      <div style="font-size:48px;margin-bottom:16px">⚽</div>
+      <div style="font-family:'Bebas Neue';font-size:24px;letter-spacing:3px;color:var(--goldl)">Conectando...</div>
+      <div style="font-size:13px;margin-top:8px">Carregando dados do bolão</div>
+    </div>`;
+
+  // Busca dados iniciais do Firebase
+  const snap = await get(ref(db,'bolao'));
+  let d = snap.val() || {};
+
+  // Inicializa estrutura se for a primeira vez
+  let changed = false;
+  if(!d.users)      { d.users={'flabolao%':{pwd:'335289',isAdmin:true}}; changed=true; }
+  if(!d.resultados) { d.resultados={}; changed=true; }
+  if(!d.palpites)   { d.palpites={}; changed=true; }
+  if(!d.mmPal)      { d.mmPal={}; changed=true; }
+  if(!d.mm)         { d.mm={}; changed=true; }
+  if(!d.fase)       { d.fase='grupos_aberto'; changed=true; }
+  if(changed) await set(ref(db,'bolao'), d);
+  _cache = d;
+
+  // Restaura a tela de login original
+  document.getElementById('login-screen').innerHTML = `
+    <div class="lbox">
+      <div class="llogo">⚽</div>
+      <div class="lsub">Bolão Copa do Mundo 2026</div>
+      <div class="fg"><label>Usuário</label><input id="lu" type="text" autocomplete="username" placeholder="Seu nome"></div>
+      <div class="fg"><label>Senha</label><input id="lp" type="password" autocomplete="current-password" placeholder="••••••"></div>
+      <button class="btn-login" onclick="doLogin()">ENTRAR</button>
+      <div class="lerr" id="lerr">Usuário ou senha incorretos.</div>
+      <div style="margin-top:14px;font-size:11px;color:var(--t2);border-top:1px solid var(--border);padding-top:12px">
+        Use o usuário e senha que o administrador enviou para você
+      </div>
+    </div>`;
+  document.getElementById('lp').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+  document.getElementById('lu').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+
+  // Inicia sincronização em tempo real
+  startRealtimeSync();
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -412,8 +484,6 @@ function doLogout(){
   document.getElementById('app').style.display='none';
   document.getElementById('lu').value='';document.getElementById('lp').value='';
 }
-document.getElementById('lp').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
-document.getElementById('lu').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
 
 /* ═══════════════════════════════════════════════════════
    TABS
@@ -1503,14 +1573,19 @@ function setMMVenc(fase,idx,side){
 function exportar(){
   const b=new Blob([JSON.stringify(gd(),null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(b);
-  a.download='bolao2026.json'; a.click();
+  a.download='bolao2026_backup.json'; a.click();
 }
 function importar(inp){
   const f=inp.files[0]; if(!f)return;
   const r=new FileReader();
-  r.onload=e=>{
-    try{localStorage.setItem('bolao2026',e.target.result);showToast('Importado! ✓');rAdmin();}
-    catch{showToast('Arquivo inválido','err');}
+  r.onload=async e=>{
+    try{
+      const d=JSON.parse(e.target.result);
+      await set(ref(db,'bolao'),d);
+      _cache=d;
+      showToast('Importado com sucesso! ✓');
+      rAdmin();
+    }catch(err){showToast('Arquivo inválido','err');}
   }; r.readAsText(f);
 }
 
@@ -1535,7 +1610,7 @@ function showToast(msg,type=''){
 }
 
 /* ── Boot ── */
-init();
+init().catch(e=>{ console.error('Init error:',e); alert('Erro ao conectar com o Firebase. Verifique sua conexão.'); });
 </script>
 </body>
 </html>
