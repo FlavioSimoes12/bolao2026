@@ -504,6 +504,30 @@ async function init(){
   }, err => console.error('Firebase listener error:', err));
 }
 
+
+/* ── Expor funções ao escopo global (necessário para ES modules) ── */
+window.doLogin = doLogin;
+window.doLogout = doLogout;
+window.showTab = showTab;
+window.rPalpites = rPalpites;
+window.savePal = savePal;
+window.saveMMScore = saveMMScore;
+window.votarMM = votarMM;
+window.toggleTransp = toggleTransp;
+window.openDetalhe = openDetalhe;
+window.closeModal = closeModal;
+window.addUser = addUser;
+window.delUser = delUser;
+window.saveRes = saveRes;
+window.saveMMRes = saveMMRes;
+window.setMMVenc = setMMVenc;
+window.setFase = setFase;
+window.exportar = exportar;
+window.importar = importar;
+window.abrirDesempate = abrirDesempate;
+window.salvarDesempate = salvarDesempate;
+window.closeTieModal = closeTieModal;
+
 /* ── Boot ── */
 init().catch(e => console.error('Boot error:', e));
 
